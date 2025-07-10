@@ -1,0 +1,28 @@
+name: Go Pipeline
+on: [push, pull_request]
+
+jobs:
+  build-test:
+    runs-on: linux
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: go build ./...
+      - name: Test
+        run: go test ./...
+  
+  trigger-deploy:
+    needs: build-test
+    runs-on: linux
+    steps:
+      - name: Trigger Ansible Pipeline
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer $PIPELINE_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "application": "clear-music-tags-go",
+              "commit_sha": "$GITEA_SHA",
+              "environment": "staging"
+            }' \
+            "https://ansible-controller.example.com/api/pipeline/trigger"
