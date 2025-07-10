@@ -1,0 +1,53 @@
+name: Go CI/CD Pipeline
+
+on:
+  push:
+    branches: 
+      - 'feature/**'
+      - 'bugfix/**'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.22
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build application
+        run: go build -o tag-cleaner ./...
+
+      - name: Run unit tests
+        run: go test -v ./...
+
+      - name: Save build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: go-binary
+          path: tag-cleaner
+
+  trigger-ansible:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Ansible pipeline
+        uses: actions/github-script@v6
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'ermektaychibekov',
+              repo: 'pipeline',
+              workflow_id: 'full_pipeline.yml',
+              ref: 'main',
+              inputs: {
+                application: 'clear-music-tags-go',
+                commit_sha: context.sha,
+                environment: '${{ github.ref == "refs/heads/main" ? "staging" : "production" }}',
+                artifact_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+              }
+            })
